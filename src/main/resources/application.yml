@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: card-engine
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/cardengine
+    username: cardengine
+    password: cardengine
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: UTC
+
+server:
+  port: 8080
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+card-engine:
+  rules:
+    daily-limit-default: 5000.00
+    transaction-limit-default: 1000.00
+    velocity-max-per-minute: 5
