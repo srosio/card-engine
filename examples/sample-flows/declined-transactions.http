@@ -1,0 +1,91 @@
+### Examples of Declined Transactions
+### Demonstrates various decline scenarios
+
+### Setup: Create account and card first
+POST http://localhost:8080/api/v1/accounts
+Content-Type: application/json
+
+{
+  "ownerId": "user-789",
+  "accountType": "INTERNAL_LEDGER",
+  "currency": "USD",
+  "initialBalance": 100.00
+}
+
+> {%
+    client.global.set("testAccountId", response.body.accountId);
+%}
+
+###
+
+POST http://localhost:8080/api/v1/cards
+Content-Type: application/json
+
+{
+  "cardholderName": "Bob Smith",
+  "last4": "9999",
+  "expirationDate": "2027-12-31",
+  "fundingAccountId": "{{testAccountId}}",
+  "ownerId": "user-789"
+}
+
+> {%
+    client.global.set("testCardId", response.body.cardId);
+%}
+
+###
+
+### Decline 1: Insufficient Funds
+POST http://localhost:8080/api/v1/authorizations
+Content-Type: application/json
+
+{
+  "cardId": "{{testCardId}}",
+  "amount": 500.00,
+  "currency": "USD",
+  "merchantName": "Electronics Store"
+}
+
+###
+
+### Decline 2: Transaction Limit Exceeded (default limit is 1000)
+POST http://localhost:8080/api/v1/authorizations
+Content-Type: application/json
+
+{
+  "cardId": "{{testCardId}}",
+  "amount": 1500.00,
+  "currency": "USD",
+  "merchantName": "Luxury Store"
+}
+
+###
+
+### Decline 3: Blocked MCC (Gambling)
+POST http://localhost:8080/api/v1/authorizations
+Content-Type: application/json
+
+{
+  "cardId": "{{testCardId}}",
+  "amount": 50.00,
+  "currency": "USD",
+  "merchantName": "Online Casino",
+  "merchantCategoryCode": "7995"
+}
+
+###
+
+### Decline 4: Frozen Card
+POST http://localhost:8080/api/v1/cards/{{testCardId}}/freeze
+
+###
+
+POST http://localhost:8080/api/v1/authorizations
+Content-Type: application/json
+
+{
+  "cardId": "{{testCardId}}",
+  "amount": 25.00,
+  "currency": "USD",
+  "merchantName": "Coffee Shop"
+}

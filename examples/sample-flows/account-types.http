@@ -1,0 +1,44 @@
+### Demonstrating Account Abstraction
+### Create different account types and issue cards backed by each
+
+### Create Internal Ledger Account
+POST http://localhost:8080/api/v1/accounts
+Content-Type: application/json
+
+{
+  "ownerId": "user-456",
+  "accountType": "INTERNAL_LEDGER",
+  "currency": "USD",
+  "initialBalance": 500.00
+}
+
+###
+
+### Create Fiat Wallet Account
+POST http://localhost:8080/api/v1/accounts
+Content-Type: application/json
+
+{
+  "ownerId": "user-456",
+  "accountType": "FIAT_WALLET",
+  "currency": "EUR",
+  "initialBalance": 500.00
+}
+
+###
+
+### Create Stablecoin Account
+POST http://localhost:8080/api/v1/accounts
+Content-Type: application/json
+
+{
+  "ownerId": "user-456",
+  "accountType": "STABLECOIN",
+  "currency": "USDC",
+  "initialBalance": 500.00
+}
+
+###
+
+### Get all accounts for owner
+GET http://localhost:8080/api/v1/accounts/owner/user-456

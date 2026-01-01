@@ -1,0 +1,75 @@
+### Card Engine - Complete Transaction Flow Example
+### This file demonstrates a full transaction lifecycle from account creation to settlement
+
+### 1. Create an Internal Ledger Account
+POST http://localhost:8080/api/v1/accounts
+Content-Type: application/json
+
+{
+  "ownerId": "user-123",
+  "accountType": "INTERNAL_LEDGER",
+  "currency": "USD",
+  "initialBalance": 1000.00
+}
+
+> {%
+    client.global.set("accountId", response.body.accountId);
+    client.log("Account created: " + response.body.accountId);
+%}
+
+### 2. Issue a Card backed by the account
+POST http://localhost:8080/api/v1/cards
+Content-Type: application/json
+
+{
+  "cardholderName": "Alice Johnson",
+  "last4": "4242",
+  "expirationDate": "2027-12-31",
+  "fundingAccountId": "{{accountId}}",
+  "ownerId": "user-123"
+}
+
+> {%
+    client.global.set("cardId", response.body.cardId);
+    client.log("Card issued: " + response.body.cardId);
+%}
+
+### 3. Check account balance
+GET http://localhost:8080/api/v1/accounts/{{accountId}}
+
+### 4. Authorize a transaction
+POST http://localhost:8080/api/v1/authorizations
+Content-Type: application/json
+
+{
+  "cardId": "{{cardId}}",
+  "amount": 75.50,
+  "currency": "USD",
+  "merchantName": "Coffee Shop",
+  "merchantCategoryCode": "5814",
+  "merchantCity": "San Francisco",
+  "merchantCountry": "US"
+}
+
+> {%
+    client.global.set("authorizationId", response.body.authorizationId);
+    client.log("Authorization: " + response.body.authorizationId + " - " + response.body.status);
+%}
+
+### 5. Check authorization details
+GET http://localhost:8080/api/v1/authorizations/{{authorizationId}}
+
+### 6. Check account balance after authorization (should show reserved funds)
+GET http://localhost:8080/api/v1/accounts/{{accountId}}
+
+### 7. Clear the transaction (settlement)
+POST http://localhost:8080/api/v1/settlement/clear/{{authorizationId}}?amount=75.50&currency=USD
+
+### 8. Check final account balance
+GET http://localhost:8080/api/v1/accounts/{{accountId}}
+
+### 9. View account ledger
+GET http://localhost:8080/api/v1/accounts/{{accountId}}/ledger
+
+### 10. View card transaction history
+GET http://localhost:8080/api/v1/cards/{{cardId}}/transactions
