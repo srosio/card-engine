@@ -8,159 +8,200 @@
 
 ## What is Card Engine?
 
-Card Engine is an **issuer-agnostic, account-agnostic card orchestration platform** that handles card authorization, settlement, and ledger logic while delegating compliance and card issuing to external providers.
+Card Engine is a **bank-agnostic card orchestration platform** that enables banks and financial institutions to issue payment cards backed by their existing core banking systems.
 
 ### What Card Engine Is
 
-✅ **Infrastructure for card programs** - Handle auth, settlement, ledger
-✅ **Account abstraction layer** - One card, any funding source
-✅ **Double-entry ledger** - Immutable financial audit trail
-✅ **Rules engine** - Spending limits, MCC blocking, velocity
-✅ **Provider adapters** - Integrate with any card processor
+✅ **Card integration layer for banks** - Plugin for existing core banking systems
+✅ **Bank adapter framework** - Works with any CBS (Fineract, T24, Mambu, FLEXCUBE, etc.)
+✅ **Card lifecycle management** - Issue, activate, freeze, authorize transactions
+✅ **Authorization & settlement orchestration** - Routes to bank core for balance checks
+✅ **Rules engine** - Spending limits, MCC blocking, velocity controls
+✅ **Processor adapters** - Integrate with card networks and processors
 
 ### What Card Engine Is NOT
 
-❌ **Not a bank** - No money transmission, no deposits
-❌ **Not a card issuer** - Requires partnership with licensed issuer
-❌ **Not a payment processor** - Integrates with existing processors
-❌ **Not a compliance platform** - KYC/AML handled externally
-❌ **Not a crypto wallet** - Just coordinates funding sources
+❌ **Not a core banking system** - Bank's CBS is the source of truth
+❌ **Not an account provider** - Uses existing bank client accounts
+❌ **Not a ledger** - Bank core owns all balances and transactions
+❌ **Not a card issuer** - Requires partnership with licensed issuer/processor
+❌ **Not a compliance platform** - KYC/AML handled by bank's systems
 
 ## The Problem
 
-Building a card program today requires:
-1. Integrating with a card issuer processor (Marqeta, Lithic, Galileo)
-2. Managing complex authorization and settlement flows
-3. Maintaining accurate ledger accounting
-4. Supporting multiple funding sources (bank accounts, crypto, prepaid)
-5. Implementing fraud rules and spending controls
+Banks with existing core banking systems want to issue payment cards to their clients:
+1. **Clients already exist** in the bank's core system with KYC complete
+2. **Accounts already exist** with balances managed by the bank's CBS
+3. **Ledger is authoritative** in the bank's core, not in the card system
+4. Banks need to integrate with card processors (Marqeta, Lithic, Galileo)
+5. Authorization must check balances in real-time from the bank's core
+6. Settlement must commit debits to the bank's ledger, not a separate system
 
-Most companies end up building tightly coupled systems where **card logic is hardcoded to one account type**. Switching from a prepaid ledger to a bank account requires rewriting authorization logic.
+Most card platforms assume they **own the ledger and accounts**, creating a mismatch for banks.
 
 ## The Solution
 
-Card Engine solves this with **account abstraction**:
+Card Engine provides a **bank core integration layer** where your CBS remains the source of truth:
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    ONE CARD                          │
+│          Bank's Core Banking System (CBS)           │
+│     (Fineract, T24, Mambu, FLEXCUBE, Custom)       │
+│                                                      │
+│  • Client accounts (pre-existing)                   │
+│  • Balances (authoritative)                         │
+│  • Transactions (source of truth)                   │
 └─────────────────────────────────────────────────────┘
+                        ▲
+                        │ BankAccountAdapter
+                        │ (balance checks, holds, commits)
                         │
-        ┌───────────────┼───────────────┬──────────────┐
-        │               │               │              │
-        ▼               ▼               ▼              ▼
-┌──────────────┐ ┌──────────────┐ ┌──────────┐ ┌────────────┐
-│ Internal     │ │ Fiat Bank    │ │Stablecoin│ │ Custodial  │
-│ Ledger       │ │ Account      │ │ Wallet   │ │ Account    │
-└──────────────┘ └──────────────┘ └──────────┘ └────────────┘
+┌─────────────────────────────────────────────────────┐
+│                  Card Engine                         │
+│                                                      │
+│  • Card lifecycle (issue, activate, freeze)         │
+│  • Authorization orchestration                      │
+│  • Settlement coordination                          │
+│  • Rules engine (limits, MCC blocking)              │
+│  • Card-to-account mapping                          │
+└─────────────────────────────────────────────────────┘
+                        ▲
+                        │ Processor webhooks
+                        │
+┌─────────────────────────────────────────────────────┐
+│          Card Network / Processor                    │
+│        (Marqeta, Lithic, Galileo, etc.)             │
+└─────────────────────────────────────────────────────┘
 ```
 
-**All account types implement the same interface:**
+**Generic bank adapter interface works with ANY core banking system:**
 
 ```java
-public interface Account {
-    Money getBalance();
-    void reserve(Money amount, String authId);
-    void commit(Money amount, String authId);
-    void release(Money amount, String authId);
+public interface BankAccountAdapter {
+    Money getAvailableBalance(String accountRef);
+    void placeHold(String accountRef, Money amount, String referenceId);
+    void commitDebit(String accountRef, Money amount, String referenceId);
+    void releaseHold(String accountRef, Money amount, String referenceId);
 }
 ```
 
 This means:
-- ✅ Switch funding sources without code changes
-- ✅ Mix account types in same platform
-- ✅ Add new account types by implementing one interface
-- ✅ Authorization logic doesn't know or care about account internals
+- ✅ Bank core remains single source of truth for balances
+- ✅ No data replication or synchronization needed
+- ✅ Works with any CBS by implementing one adapter interface
+- ✅ Cards are payment instruments for existing accounts
+- ✅ Client accounts exist BEFORE card issuance
 
 ## Architecture
 
 ```
-External Systems (Card Networks, Banks, Custody)
-                    │
-                    ▼
-         ┌─────────────────────┐
-         │ Provider Adapters   │
-         └─────────────────────┘
-                    │
-                    ▼
-         ┌─────────────────────┐
-         │   REST API Layer    │
-         └─────────────────────┘
-                    │
-    ┌───────────────┼───────────────┐
-    ▼               ▼               ▼
-┌─────────┐  ┌─────────────┐  ┌──────────┐
-│  Auth   │  │ Settlement  │  │  Ledger  │
-│ Service │  │  Service    │  │ Service  │
-└─────────┘  └─────────────┘  └──────────┘
-    │               │               │
-    └───────────────┼───────────────┘
-                    ▼
-         ┌─────────────────────┐
-         │   Domain Layer      │
-         │  Cards │ Accounts   │
-         └─────────────────────┘
-                    │
-                    ▼
-         ┌─────────────────────┐
-         │    PostgreSQL       │
-         └─────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│        Bank's Core Banking System (CBS)              │
+│   Fineract / T24 / Mambu / FLEXCUBE / Custom        │
+│                                                       │
+│   • Authoritative balances                          │
+│   • Transaction ledger                              │
+│   • Client accounts                                 │
+└──────────────────────────────────────────────────────┘
+                        ▲
+                        │ BankAccountAdapter
+                        │ (getBalance, placeHold, commitDebit, releaseHold)
+                        │
+┌───────────────────────┴───────────────────────────────┐
+│              Card Engine (PostgreSQL)                  │
+│                                                        │
+│  ┌────────────────────────────────────────────────┐  │
+│  │  Card Network Webhook Controller               │  │
+│  │  (Authorization, Clearing, Reversal webhooks)  │  │
+│  └────────────────────────────────────────────────┘  │
+│                        │                              │
+│  ┌────────────────────┴──────────────────────────┐  │
+│  │   Bank Services                                │  │
+│  │   • BankCardIssuanceService                   │  │
+│  │   • BankAuthorizationService                  │  │
+│  │   • BankSettlementService                     │  │
+│  └────────────────────────────────────────────────┘  │
+│                        │                              │
+│  ┌────────────────────┴──────────────────────────┐  │
+│  │   Domain Entities (PostgreSQL)                │  │
+│  │   • Cards                                      │  │
+│  │   • BankAccountMapping (card → bank account)  │  │
+│  │   • Authorizations (tracking only)            │  │
+│  │   • Rules (limits, MCC blocks)                │  │
+│  └────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────┘
+                        ▲
+                        │ Webhook callbacks
+                        │
+┌───────────────────────┴────────────────────────────────┐
+│        Card Processor / Network                        │
+│     (Marqeta, Lithic, Galileo, Stripe Issuing)        │
+└────────────────────────────────────────────────────────┘
 ```
 
-See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed architecture documentation.
+See [docs/BANK_INTEGRATION.md](docs/BANK_INTEGRATION.md) for detailed bank integration documentation.
 
 ## Key Features
 
-### 1. Authorization Flow
+### 1. Bank-Centric Authorization Flow
 
 ```
-1. Validate card state (active, not expired)
-2. Run rules engine (limits, MCC blocking, velocity)
-3. Reserve funds from backing account
-4. Record authorization hold in ledger
-5. Return APPROVED or DECLINED
+1. Card network sends authorization webhook
+2. Validate card state (active, not expired, belongs to bank client)
+3. Run rules engine (limits, MCC blocking, velocity)
+4. Check balance in BANK CORE via BankAccountAdapter
+5. Place authorization hold in BANK CORE (not locally)
+6. Record authorization reference locally (for tracking)
+7. Return APPROVED or DECLINED to processor
 ```
 
-**Idempotent** - Duplicate requests return cached result
-**Real-time** - Balance checks happen at authorization time
-**Flexible rules** - Easy to add custom authorization rules
+**Key principles**:
+- ✅ Balance check happens in bank core, not local database
+- ✅ Authorization holds placed in bank's ledger
+- ✅ Idempotent - duplicate requests return cached result
+- ✅ Real-time - balance checks hit bank core synchronously
 
-### 2. Settlement & Clearing
+### 2. Bank-Centric Settlement & Clearing
 
 ```
-1. Receive clearing event from processor
-2. Validate authorization exists and is approved
-3. Commit funds from account
-4. Record clearing in ledger
-5. Update authorization status
+1. Card processor sends clearing webhook (1-3 days after authorization)
+2. Lookup authorization reference
+3. Commit debit in BANK CORE via BankAccountAdapter
+4. Bank core releases hold and debits the account
+5. Update local authorization status to CLEARED
 ```
 
 **Supports**:
 - Full clearing (settle entire authorization)
 - Partial clearing (settle less than authorized)
-- Authorization release (cancel without settling)
-- Reversals (refunds)
+- Authorization release (cancel hold without settling)
+- Reversals (refunds posted to bank core)
 
-### 3. Double-Entry Ledger
+**Bank core performs the actual debit** - Card Engine coordinates only.
 
-Every financial operation is recorded as an **immutable ledger entry**:
+### 3. Bank Account Mapping
 
-- `AUTH_HOLD` - Reserve funds during authorization
-- `AUTH_RELEASE` - Release reserved funds
-- `CLEARING_COMMIT` - Commit funds during settlement
-- `REVERSAL` - Refund a cleared transaction
-- `DEPOSIT` - Add funds to account
-- `WITHDRAWAL` - Remove funds from account
+Cards are **payment instruments** mapped to existing bank accounts:
+
+```java
+@Entity
+public class BankAccountMapping {
+    private String cardId;           // Card Engine's card ID
+    private String bankClientRef;    // Bank's client ID (pre-existing)
+    private String bankAccountRef;   // Bank's account ID (pre-existing)
+    private String bankCoreType;     // "Fineract", "T24", etc.
+}
+```
 
 **Properties**:
-- Append-only (entries never updated or deleted)
-- Full audit trail
-- Reconciliation ready
-- Idempotent (duplicate operations prevented)
+- Immutable once created
+- Client accounts must exist BEFORE card issuance
+- One card maps to one bank account
+- Multiple cards can map to same bank account
 
 ### 4. Rules Engine
 
-Built-in rules:
+Built-in authorization rules:
 - **Transaction Limit** - Max amount per transaction
 - **Daily Spend Limit** - Max spend per day per card
 - **MCC Blocking** - Block merchant categories (gambling, etc.)
@@ -168,14 +209,19 @@ Built-in rules:
 
 **Extensible**: Implement `Rule` interface to add custom rules.
 
-### 5. Account Types (MVP)
+Rules run BEFORE checking balance in bank core to fail fast on policy violations.
 
-| Account Type | Description | Use Case |
-|--------------|-------------|----------|
-| `INTERNAL_LEDGER` | Managed within card engine | Prepaid card programs |
-| `FIAT_WALLET` | Mock bank account | Traditional debit cards |
-| `STABLECOIN` | Mock crypto account | Crypto-backed cards |
-| `EXTERNAL_CUSTODIAL` | Read-only external | View-only integrations |
+### 5. Supported Bank Core Systems
+
+| Bank Core | Adapter | Authorization Hold Support |
+|-----------|---------|---------------------------|
+| Apache Fineract | `FineractBankAccountAdapter` | Shadow journal entries |
+| Temenos T24 | Implement `BankAccountAdapter` | Native hold support |
+| Mambu | Implement `BankAccountAdapter` | Native hold support |
+| Oracle FLEXCUBE | Implement `BankAccountAdapter` | Native hold support |
+| Custom CBS | Implement `BankAccountAdapter` | Varies by system |
+
+See [docs/BANK_INTEGRATION.md](docs/BANK_INTEGRATION.md) for integration patterns.
 
 ## Quick Start
 
@@ -205,59 +251,79 @@ Open your browser to: `http://localhost:8080/swagger-ui.html`
 
 ## Example Usage
 
-### Complete Transaction Flow
+### Complete Bank-Centric Transaction Flow
 
 ```bash
-# 1. Create an account
-curl -X POST http://localhost:8080/api/v1/accounts \
+# PREREQUISITE: Bank client and account already exist in your core banking system
+# Example: Client ID = "CLIENT_001" with Savings Account = "SA_12345" with $1000 balance
+
+# 1. Issue a card for existing bank account
+curl -X POST http://localhost:8080/api/v1/bank/cards \
   -H "Content-Type: application/json" \
   -d '{
-    "ownerId": "user-123",
-    "accountType": "INTERNAL_LEDGER",
-    "currency": "USD",
-    "initialBalance": 1000.00
-  }'
-
-# Response: { "accountId": "acc-xyz...", "balance": { "amount": 1000.00, "currency": "USD" } }
-
-# 2. Issue a card
-curl -X POST http://localhost:8080/api/v1/cards \
-  -H "Content-Type: application/json" \
-  -d '{
+    "bankClientRef": "CLIENT_001",
+    "bankAccountRef": "SA_12345",
     "cardholderName": "Alice Johnson",
-    "last4": "4242",
     "expirationDate": "2027-12-31",
-    "fundingAccountId": "acc-xyz...",
-    "ownerId": "user-123"
+    "issuedBy": "bank-admin"
   }'
 
-# Response: { "cardId": "card-abc...", "state": "ACTIVE", ... }
+# Response: { "cardId": "card-abc...", "state": "FROZEN", ... }
 
-# 3. Authorize a transaction
-curl -X POST http://localhost:8080/api/v1/authorizations \
+# 2. Activate the card
+curl -X POST "http://localhost:8080/api/v1/bank/cards/card-abc.../activate"
+
+# Response: { "cardId": "card-abc...", "state": "ACTIVE" }
+
+# 3. Card network sends authorization webhook (when customer swipes card)
+# This happens automatically from the card processor - NOT a manual API call
+# Card Engine checks balance in YOUR bank core and places hold there
+
+# For testing, you can simulate:
+curl -X POST http://localhost:8080/api/v1/webhooks/processor/sample/authorize \
   -H "Content-Type: application/json" \
   -d '{
-    "cardId": "card-abc...",
+    "processorTransactionId": "proc-tx-001",
+    "cardToken": "card-abc...",
     "amount": 75.50,
     "currency": "USD",
     "merchantName": "Coffee Shop",
-    "merchantCategoryCode": "5814"
+    "merchantCategoryCode": "5814",
+    "idempotencyKey": "idem-001"
   }'
 
-# Response: { "authorizationId": "auth-123...", "status": "APPROVED" }
+# Response: { "status": "APPROVED", "authorizationId": "auth-123..." }
+# Behind the scenes:
+#   - Card Engine checked balance in YOUR bank core
+#   - Hold of $75.50 placed in YOUR bank's ledger
+#   - Card Engine stored reference to authorization
 
-# 4. Clear the transaction (settlement)
-curl -X POST "http://localhost:8080/api/v1/settlement/clear/auth-123...?amount=75.50&currency=USD"
+# 4. Card network sends clearing webhook (1-3 days later)
+curl -X POST http://localhost:8080/api/v1/webhooks/processor/sample/clear \
+  -H "Content-Type: application/json" \
+  -d '{
+    "processorTransactionId": "proc-tx-001",
+    "clearingAmount": 75.50,
+    "clearingCurrency": "USD"
+  }'
 
-# 5. View ledger
-curl http://localhost:8080/api/v1/accounts/acc-xyz.../ledger
+# Response: { "status": "CLEARED" }
+# Behind the scenes:
+#   - Hold released in YOUR bank core
+#   - Debit of $75.50 committed in YOUR bank's ledger
+#   - Account balance in bank core now $924.50
+
+# 5. Check balance in YOUR bank core (Card Engine doesn't store it)
+# Use your bank's core banking API - Card Engine doesn't own balances
 ```
 
-See [examples/sample-flows/](examples/sample-flows/) for more complete examples including:
-- Different account types
-- Declined transactions
-- Reversal flows
-- Partial clearing
+**Key points**:
+- ✅ Client account exists in YOUR bank core BEFORE card issuance
+- ✅ Balance checks hit YOUR bank core in real-time
+- ✅ Authorization holds placed in YOUR bank's ledger
+- ✅ Card Engine coordinates, bank core owns the money
+
+See [docs/BANK_INTEGRATION.md](docs/BANK_INTEGRATION.md) for complete integration guide.
 
 ## Testing
 
@@ -278,88 +344,135 @@ mvn test
 ```
 card-engine/
 ├── src/main/java/com/cardengine/
-│   ├── accounts/          # Account abstraction layer
-│   │   ├── Account.java
-│   │   ├── InternalLedgerAccount.java
-│   │   ├── MockFiatAccount.java
-│   │   └── MockStablecoinAccount.java
+│   ├── bank/              # Bank core integration layer
+│   │   ├── BankAccountAdapter.java           # Generic bank adapter interface
+│   │   ├── BankAccountMapping.java           # Card-to-account mapping
+│   │   ├── BankCardIssuanceService.java      # Issue cards for bank accounts
+│   │   ├── BankAuthorizationService.java     # Authorize with bank core
+│   │   ├── BankSettlementService.java        # Settle with bank core
+│   │   ├── fineract/
+│   │   │   └── FineractBankAccountAdapter.java  # Fineract implementation
+│   │   └── mock/
+│   │       └── MockBankAccountAdapter.java      # Testing mock
 │   ├── cards/             # Card lifecycle management
-│   ├── ledger/            # Double-entry ledger
-│   ├── authorization/     # Authorization flow
-│   ├── settlement/        # Clearing and settlement
-│   ├── rules/             # Rules engine
-│   ├── providers/         # External provider adapters
+│   ├── authorization/     # Authorization entities and rules
+│   ├── settlement/        # Settlement entities
+│   ├── rules/             # Rules engine (limits, MCC, velocity)
+│   ├── providers/         # Card processor adapters
+│   │   ├── processor/     # SampleProcessor webhook adapter
+│   │   └── fineract/      # Fineract API client
 │   ├── api/               # REST API controllers
-│   └── common/            # Shared types and utilities
-├── examples/
-│   └── sample-flows/      # HTTP request examples
+│   └── common/            # Shared types (Money, Currency)
+├── src/test/java/com/cardengine/
+│   └── bank/              # Bank integration tests
 ├── docs/
-│   └── ARCHITECTURE.md    # Detailed architecture
+│   ├── BANK_INTEGRATION.md     # Bank core integration guide
+│   ├── FINERACT_INTEGRATION.md # Fineract setup guide
+│   └── PROCESSOR_INTEGRATION.md # Processor integration guide
 └── docker-compose.yml     # PostgreSQL setup
 ```
 
 ## Extension Points
 
-### Add a New Account Type
+### Integrate a New Bank Core System
 
-```java
-@Entity
-@DiscriminatorValue("MY_ACCOUNT_TYPE")
-public class MyCustomAccount extends BaseAccount {
-
-    public MyCustomAccount(String ownerId, Money initialBalance) {
-        super(ownerId, initialBalance, AccountType.MY_CUSTOM);
-    }
-
-    @Override
-    public AccountType getAccountType() {
-        return AccountType.MY_CUSTOM;
-    }
-
-    // Optionally override reserve/commit/release for custom logic
-}
-```
-
-### Add a New Rule
+To integrate your core banking system (Temenos T24, Mambu, Oracle FLEXCUBE, etc.):
 
 ```java
 @Component
-public class MyCustomRule implements Rule {
+public class T24BankAccountAdapter implements BankAccountAdapter {
+
+    private final T24ApiClient t24Client;
+
+    @Override
+    public Money getAvailableBalance(String accountRef) {
+        // Call T24 API to get current available balance
+        T24Account account = t24Client.getAccount(accountRef);
+        return Money.of(account.getAvailableBalance(), Currency.USD);
+    }
+
+    @Override
+    public void placeHold(String accountRef, Money amount, String referenceId) {
+        // Check idempotency (has this referenceId been processed?)
+        if (holdExists(referenceId)) {
+            return;  // Already processed
+        }
+
+        // T24 has native authorization hold support
+        t24Client.createAuthorizationHold(accountRef, amount, referenceId);
+    }
+
+    @Override
+    public void commitDebit(String accountRef, Money amount, String referenceId) {
+        // Convert hold to final debit
+        t24Client.commitHold(accountRef, referenceId, amount);
+    }
+
+    @Override
+    public void releaseHold(String accountRef, Money amount, String referenceId) {
+        // Cancel hold without debiting
+        t24Client.reverseHold(accountRef, referenceId);
+    }
+
+    @Override
+    public String getAdapterName() {
+        return "T24";
+    }
+}
+```
+
+**NO business logic in adapters** - only API translation.
+
+See [docs/BANK_INTEGRATION.md](docs/BANK_INTEGRATION.md) for authorization hold patterns.
+
+### Add a New Authorization Rule
+
+```java
+@Component
+public class GeofenceRule implements Rule {
 
     @Override
     public RuleResult evaluate(AuthorizationRequest request) {
-        // Your custom logic
-        if (shouldDecline) {
-            return RuleResult.decline("Custom decline reason");
+        // Block transactions outside allowed countries
+        if (!allowedCountries.contains(request.getMerchantCountry())) {
+            return RuleResult.decline("Transaction blocked: country not allowed");
         }
         return RuleResult.approve();
     }
 
     @Override
     public String getRuleName() {
-        return "MyCustomRule";
+        return "GeofenceRule";
     }
 }
 ```
 
-### Add a Provider Integration
+Rules are auto-discovered by Spring and run before bank core balance checks.
+
+### Integrate a New Card Processor
 
 ```java
 @Component
-public class RealCardProcessor implements CardProcessorAdapter {
+public class MarqetaProcessorAdapter {
 
-    @Override
-    public void sendAuthorizationResponse(AuthorizationResponse response) {
-        // Call real processor API
-        processorClient.send(response);
-    }
+    @PostMapping("/webhooks/marqeta/authorize")
+    public MarqetaResponse handleAuthorization(@RequestBody MarqetaWebhook webhook) {
+        // 1. Map Marqeta webhook to internal AuthorizationRequest
+        AuthorizationRequest request = mapToInternalFormat(webhook);
 
-    @Override
-    public String getProcessorName() {
-        return "RealProcessor";
+        // 2. Call core authorization service (runs rules, checks bank core)
+        AuthorizationResponse response = bankAuthorizationService.authorize(request);
+
+        // 3. Store ID mapping for later clearing
+        storeMapping(webhook.getMarqetaTransactionId(), response.getAuthorizationId());
+
+        // 4. Translate response to Marqeta format
+        return mapToMarqetaFormat(response);
     }
 }
 ```
+
+**Adapters only translate** - never contain authorization logic.
 
 ## Configuration
 
@@ -367,139 +480,149 @@ Key configuration in `application.yml`:
 
 ```yaml
 card-engine:
-  rules:
-    daily-limit-default: 5000.00      # Default daily spending limit
-    transaction-limit-default: 1000.00 # Default per-transaction limit
-    velocity-max-per-minute: 5         # Max transactions per minute
+  # Bank Core Integration
+  bank:
+    adapter: fineract  # Options: fineract, mock, custom
 
-  # Apache Fineract Integration
+  # Apache Fineract Configuration (if using Fineract adapter)
   fineract:
-    enabled: false
-    base-url: http://localhost:8443/fineract-provider/api/v1
+    enabled: true
+    base-url: http://your-fineract:8443/fineract-provider/api/v1
     tenant: default
     username: mifos
     password: password
-    card-auth-holds-gl-account-id: 1000
+    card-auth-holds-gl-account-id: 1000  # GL account for shadow holds
 
   # Card Processor Configuration
   processor:
-    active: mock  # Options: mock, sample
+    active: sample  # Options: mock, sample, marqeta, lithic
+    sample:
+      enabled: true
+      webhook-secret: your-webhook-secret
+
+  # Authorization Rules
+  rules:
+    daily-limit-default: 5000.00         # Default daily spending limit
+    transaction-limit-default: 1000.00   # Default per-transaction limit
+    velocity-max-per-minute: 5           # Max transactions per minute
 ```
 
 ## Integrations
 
-Card Engine provides production adapters for real-world integrations.
+Card Engine provides production-ready adapters for bank cores and card processors.
 
-### Apache Fineract Integration
+### Bank Core Integration
 
-**Fineract** is used as the authoritative ledger system for account balances and transactions.
+#### Apache Fineract (Reference Implementation)
 
-#### What is Fineract?
+Apache Fineract is an open-source core banking platform used by banks worldwide. Card Engine includes `FineractBankAccountAdapter` as a reference implementation.
 
-Apache Fineract is an open-source core banking platform used by financial institutions worldwide. When integrated with Card Engine, Fineract becomes the source of truth for:
-- Account balances
-- Transaction history
-- Ledger entries
+**How It Works:**
 
-#### How It Works
+The adapter implements `BankAccountAdapter` and translates card operations to Fineract API calls:
 
-The `FineractAccountAdapter` implements the `Account` interface and translates card operations into Fineract API calls:
+```java
+@Component
+public class FineractBankAccountAdapter implements BankAccountAdapter {
+
+    @Override
+    public Money getAvailableBalance(String accountRef) {
+        // Query Fineract savings account
+        Long savingsAccountId = parseAccountRef(accountRef);
+        return fineractClient.getAccountBalance(savingsAccountId);
+    }
+
+    @Override
+    public void placeHold(String accountRef, Money amount, String referenceId) {
+        // Shadow journal entry workaround for authorization holds
+        // DEBIT savings account → CREDIT CARD_AUTH_HOLDS GL account
+        fineractClient.createJournalEntry(/* ... */);
+        // Track hold in fineract_auth_holds table
+    }
+}
+```
 
 **Authorization Hold Workaround:**
 
-Since Fineract doesn't natively support card-style authorization holds, we use a shadow transaction approach:
+Fineract doesn't natively support card authorization holds. We use **shadow journal entries**:
 
-1. **RESERVE** (Authorization):
-   - Create journal entry: DEBIT user's savings account → CREDIT CARD_AUTH_HOLDS GL account
-   - Funds become unavailable but aren't removed from the account
-   - Hold reference stored in `fineract_auth_holds` table
-
-2. **COMMIT** (Clearing):
-   - Reverse the hold journal entry (returns funds to available balance)
-   - Make actual debit from savings account
-   - Mark hold as COMMITTED
-
-3. **RELEASE** (Expiry/Cancellation):
-   - Reverse the hold journal entry
-   - Mark hold as RELEASED
+1. **placeHold()** - Create journal entry debiting the account, crediting CARD_AUTH_HOLDS GL account
+2. **commitDebit()** - Reverse shadow entry, create actual debit transaction
+3. **releaseHold()** - Reverse shadow entry (cancel hold)
 
 This ensures:
+- ✅ Funds unavailable during hold period
 - ✅ Fineract ledger remains balanced
-- ✅ Funds are properly reserved during authorization
-- ✅ All movements are auditable in Fineract
-- ✅ No duplicate debits on clearing
+- ✅ All movements auditable in Fineract
+- ✅ No duplicate debits
 
-#### Setup
+**Setup:**
 
-1. **Configure Fineract connection in `application.yml`:**
-
+1. Configure Fineract in `application.yml`:
 ```yaml
 card-engine:
+  bank:
+    adapter: fineract
   fineract:
-    enabled: true
-    base-url: http://your-fineract-instance:8443/fineract-provider/api/v1
-    tenant: your-tenant
-    username: your-username
-    password: your-password
-    card-auth-holds-gl-account-id: 1000  # GL account for holding funds
+    base-url: http://your-fineract:8443/fineract-provider/api/v1
+    tenant: default
+    username: mifos
+    password: password
+    card-auth-holds-gl-account-id: 1000
 ```
 
-2. **Create the CARD_AUTH_HOLDS GL account in Fineract** (one-time setup)
+2. Create CARD_AUTH_HOLDS GL account in Fineract (one-time)
 
-3. **Use FineractAccountAdapter for new accounts:**
+3. Ensure client savings accounts exist before issuing cards
 
-```java
-FineractAccountAdapter account = new FineractAccountAdapter(
-    fineractClient,
-    holdRepository,
-    accountId,
-    fineractSavingsAccountId,  // Link to Fineract account
-    Currency.USD,
-    cardAuthHoldsGLAccountId
-);
-```
+See [docs/BANK_INTEGRATION.md](docs/BANK_INTEGRATION.md) for complete integration guide.
 
-See `docs/FINERACT_INTEGRATION.md` for detailed setup instructions.
+#### Other Bank Cores
 
-### SampleProcessor Integration
+The same `BankAccountAdapter` interface works with:
+- **Temenos T24** - Implement adapter using T24 APIs
+- **Mambu** - Implement adapter using Mambu REST API
+- **Oracle FLEXCUBE** - Implement adapter using FLEXCUBE APIs
+- **Custom CBS** - Implement adapter for your proprietary system
 
-**SampleProcessor** demonstrates real card processor webhook integration.
+See [docs/BANK_INTEGRATION.md](docs/BANK_INTEGRATION.md) for integration patterns and authorization hold strategies.
 
-#### How It Works
+### Card Processor Integration
 
-The `SampleProcessorAdapter` handles webhook callbacks from card processors:
+#### SampleProcessor (Reference Implementation)
+
+The `SampleProcessorAdapter` demonstrates real card network/processor webhook integration.
+
+**How It Works:**
 
 1. **Authorization Webhook**:
-   - Processor sends real-time authorization request
-   - Adapter translates to internal `AuthorizationRequest`
-   - Core orchestration processes (rules, balance checks)
-   - Response sent back to processor (APPROVED/DECLINED)
+   - Card network sends authorization request (customer swipes card)
+   - Adapter translates to `AuthorizationRequest`
+   - `BankAuthorizationService` runs rules and checks balance in bank core
+   - Adapter returns APPROVED/DECLINED to processor
 
 2. **Clearing Webhook**:
-   - Processor notifies when transaction settles (1-3 days later)
-   - Adapter looks up internal authorization ID
-   - Settlement service commits funds
+   - Processor notifies settlement (1-3 days later)
+   - Adapter looks up authorization ID
+   - `BankSettlementService` commits debit in bank core
 
 3. **Reversal Webhook**:
-   - Processor notifies of refund/cancellation
-   - Adapter processes reversal through settlement service
+   - Processor notifies refund/cancellation
+   - Settlement service releases hold in bank core
 
-#### Key Features
+**Key Features:**
+- ✅ ID mapping between processor and internal authorization IDs
+- ✅ Idempotent webhook processing
+- ✅ NO business logic - adapters only translate
 
-- **ID Mapping**: Processor transaction IDs mapped to internal authorization IDs
-- **Idempotency**: Duplicate webhooks handled safely
-- **No Business Logic**: Adapter only translates; core handles all logic
-
-#### Webhook Endpoints
-
+**Webhook Endpoints:**
 ```
 POST /api/v1/webhooks/processor/sample/authorize
 POST /api/v1/webhooks/processor/sample/clear
 POST /api/v1/webhooks/processor/sample/reverse
 ```
 
-#### Configuration
-
+**Configuration:**
 ```yaml
 card-engine:
   processor:
@@ -509,50 +632,47 @@ card-engine:
       webhook-secret: your-webhook-secret
 ```
 
-#### Testing
+#### Integrating Other Processors
 
-See `SampleProcessorAdapterTest` for webhook flow examples.
+To integrate Marqeta, Lithic, Galileo, Stripe Issuing, etc.:
 
-### Adding Your Own Processor
+1. Implement webhook DTOs matching processor format
+2. Create webhook controller receiving processor callbacks
+3. Map processor IDs to internal authorization IDs
+4. Call `BankAuthorizationService` and `BankSettlementService`
+5. Translate responses to processor format
+6. Store ID mappings for clearing correlation
 
-To integrate a new card processor (Marqeta, Lithic, etc.):
+**Rule**: Adapters translate only. Never add authorization logic.
 
-1. **Implement webhook DTOs** matching processor's format
-2. **Create adapter class** that:
-   - Receives processor webhooks
-   - Maps processor IDs to internal IDs
-   - Translates to `AuthorizationRequest`/`ClearingRequest`
-   - Calls core orchestration services
-3. **Add webhook controller** endpoints
-4. **Store ID mappings** in database
-5. **Preserve idempotency keys** from processor
-
-**Key Rule**: Adapters only translate. Never put business logic in adapters.
-
-See `com.cardengine.providers.processor.SampleProcessorAdapter` as reference implementation.
+See `SampleProcessorAdapter` as reference: [src/main/java/com/cardengine/providers/processor/](src/main/java/com/cardengine/providers/processor/)
 
 ## Roadmap
 
 ### MVP (Current)
-- ✅ Account abstraction with 3 types
-- ✅ Authorization and settlement flows
-- ✅ Double-entry ledger
-- ✅ Basic rules engine
-- ✅ REST API
-- ✅ Mock provider adapters
-- ✅ **Apache Fineract integration (authoritative ledger)**
-- ✅ **Real processor adapter (SampleProcessor with webhooks)**
-- ✅ **Authorization hold workaround for Fineract**
+- ✅ **Bank core integration architecture** - Generic adapter pattern for any CBS
+- ✅ **BankAccountAdapter interface** - Vendor-neutral bank integration
+- ✅ **Apache Fineract integration** - Reference implementation with shadow holds
+- ✅ **MockBankAccountAdapter** - Testing without real bank core
+- ✅ **Bank-centric authorization** - Balance checks in bank core, not locally
+- ✅ **Bank-centric settlement** - Commits/releases in bank ledger
+- ✅ **Card-to-account mapping** - Immutable card → existing bank account
+- ✅ **Card processor webhooks** - SampleProcessor reference implementation
+- ✅ **Rules engine** - Limits, MCC blocking, velocity
+- ✅ **Comprehensive tests** - Bank integration test suite
 
 ### Future Enhancements
-- [ ] Multi-currency support with FX
-- [ ] Webhook events for internal notifications
-- [ ] Advanced fraud detection
-- [ ] Multi-card per account
-- [ ] Spend controls per merchant/category
+- [ ] Additional bank adapters (Temenos T24, Mambu, Oracle FLEXCUBE)
+- [ ] Additional processor integrations (Marqeta, Lithic, Galileo, Stripe Issuing)
+- [ ] Multi-currency support with FX integration
+- [ ] Webhook events for real-time notifications
+- [ ] Advanced fraud detection and ML-based rules
+- [ ] Multi-card per bank account support
+- [ ] Granular spend controls (per merchant, per category, per time)
 - [ ] Reporting and analytics APIs
-- [ ] Admin dashboard
-- [ ] Additional processor integrations (Marqeta, Lithic, Stripe Issuing)
+- [ ] Admin dashboard for card operations
+- [ ] 3DS authentication integration
+- [ ] Dispute management workflows
 
 ## Production Readiness Checklist
 
@@ -576,30 +696,33 @@ Before using in production, you must:
 **IMPORTANT**: This software is provided for educational and infrastructure purposes only.
 
 This software:
-- Does NOT provide financial services
-- Does NOT hold customer funds
-- Does NOT process real card transactions without external integrations
-- REQUIRES appropriate licensing to operate in production
-- REQUIRES partnership with licensed card issuers and processors
+- Is an integration layer for banks with existing licenses
+- Does NOT provide banking services
+- Does NOT hold customer funds (bank core does)
+- Does NOT process card transactions without processor partnerships
+- REQUIRES appropriate banking and card issuing licenses
+- Bank must have existing partnership with card issuer/processor
 
-Operating a card program requires:
-- Money transmitter licenses (varies by jurisdiction)
-- Partnership with a licensed bank or card issuer
-- PCI DSS certification for handling card data
-- Compliance with Visa/Mastercard network rules
-- KYC/AML compliance programs
+**For banks deploying this:**
+- Ensure you have appropriate banking licenses
+- Partner with licensed card issuer or processor
+- Obtain PCI DSS certification for card data handling
+- Comply with card network rules (Visa/Mastercard/etc.)
+- Maintain KYC/AML compliance in your core banking system
+- Consult legal and compliance experts
 
-**Consult legal and compliance experts before using this in production.**
+**This is infrastructure software for licensed financial institutions only.**
 
 ## Contributing
 
 Contributions are welcome! This is an open-source foundation project.
 
 Areas where contributions would be valuable:
-- Additional account type implementations
-- More sophisticated fraud rules
-- Real provider integrations
+- Additional bank core adapters (T24, Mambu, FLEXCUBE, etc.)
+- Additional card processor integrations (Marqeta, Lithic, Galileo)
+- More sophisticated fraud and authorization rules
 - Performance optimizations
+- Multi-currency and FX support
 - Documentation improvements
 
 ## License
@@ -608,17 +731,20 @@ Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for detai
 
 ## Support
 
-- **Documentation**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **Examples**: [examples/sample-flows/](examples/sample-flows/)
+- **Bank Integration Guide**: [docs/BANK_INTEGRATION.md](docs/BANK_INTEGRATION.md)
+- **Fineract Setup**: [docs/FINERACT_INTEGRATION.md](docs/FINERACT_INTEGRATION.md)
+- **Processor Integration**: [docs/PROCESSOR_INTEGRATION.md](docs/PROCESSOR_INTEGRATION.md)
 - **Issues**: Open an issue on GitHub
 - **Discussions**: Use GitHub Discussions for questions
 
 ## Acknowledgments
 
-This project is inspired by production card infrastructure at fintech companies, but is built from scratch as an open-source foundation for the community.
+This project provides bank-agnostic card infrastructure for financial institutions. It enables banks to offer card programs while maintaining their core banking system as the source of truth.
 
 **Built with**: Java 21, Spring Boot, PostgreSQL, and a commitment to clean architecture.
 
+**Design philosophy**: Bank core is authoritative. Card Engine coordinates, never owns balances.
+
 ---
 
-**Note**: Card Engine is infrastructure software designed for engineers building card programs. It is not end-user software and requires technical expertise to deploy and operate.
+**Note**: Card Engine is infrastructure software for banks and licensed financial institutions. It requires technical expertise and appropriate licenses to deploy and operate.
