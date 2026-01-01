@@ -371,7 +371,165 @@ card-engine:
     daily-limit-default: 5000.00      # Default daily spending limit
     transaction-limit-default: 1000.00 # Default per-transaction limit
     velocity-max-per-minute: 5         # Max transactions per minute
+
+  # Apache Fineract Integration
+  fineract:
+    enabled: false
+    base-url: http://localhost:8443/fineract-provider/api/v1
+    tenant: default
+    username: mifos
+    password: password
+    card-auth-holds-gl-account-id: 1000
+
+  # Card Processor Configuration
+  processor:
+    active: mock  # Options: mock, sample
 ```
+
+## Integrations
+
+Card Engine provides production adapters for real-world integrations.
+
+### Apache Fineract Integration
+
+**Fineract** is used as the authoritative ledger system for account balances and transactions.
+
+#### What is Fineract?
+
+Apache Fineract is an open-source core banking platform used by financial institutions worldwide. When integrated with Card Engine, Fineract becomes the source of truth for:
+- Account balances
+- Transaction history
+- Ledger entries
+
+#### How It Works
+
+The `FineractAccountAdapter` implements the `Account` interface and translates card operations into Fineract API calls:
+
+**Authorization Hold Workaround:**
+
+Since Fineract doesn't natively support card-style authorization holds, we use a shadow transaction approach:
+
+1. **RESERVE** (Authorization):
+   - Create journal entry: DEBIT user's savings account → CREDIT CARD_AUTH_HOLDS GL account
+   - Funds become unavailable but aren't removed from the account
+   - Hold reference stored in `fineract_auth_holds` table
+
+2. **COMMIT** (Clearing):
+   - Reverse the hold journal entry (returns funds to available balance)
+   - Make actual debit from savings account
+   - Mark hold as COMMITTED
+
+3. **RELEASE** (Expiry/Cancellation):
+   - Reverse the hold journal entry
+   - Mark hold as RELEASED
+
+This ensures:
+- ✅ Fineract ledger remains balanced
+- ✅ Funds are properly reserved during authorization
+- ✅ All movements are auditable in Fineract
+- ✅ No duplicate debits on clearing
+
+#### Setup
+
+1. **Configure Fineract connection in `application.yml`:**
+
+```yaml
+card-engine:
+  fineract:
+    enabled: true
+    base-url: http://your-fineract-instance:8443/fineract-provider/api/v1
+    tenant: your-tenant
+    username: your-username
+    password: your-password
+    card-auth-holds-gl-account-id: 1000  # GL account for holding funds
+```
+
+2. **Create the CARD_AUTH_HOLDS GL account in Fineract** (one-time setup)
+
+3. **Use FineractAccountAdapter for new accounts:**
+
+```java
+FineractAccountAdapter account = new FineractAccountAdapter(
+    fineractClient,
+    holdRepository,
+    accountId,
+    fineractSavingsAccountId,  // Link to Fineract account
+    Currency.USD,
+    cardAuthHoldsGLAccountId
+);
+```
+
+See `docs/FINERACT_INTEGRATION.md` for detailed setup instructions.
+
+### SampleProcessor Integration
+
+**SampleProcessor** demonstrates real card processor webhook integration.
+
+#### How It Works
+
+The `SampleProcessorAdapter` handles webhook callbacks from card processors:
+
+1. **Authorization Webhook**:
+   - Processor sends real-time authorization request
+   - Adapter translates to internal `AuthorizationRequest`
+   - Core orchestration processes (rules, balance checks)
+   - Response sent back to processor (APPROVED/DECLINED)
+
+2. **Clearing Webhook**:
+   - Processor notifies when transaction settles (1-3 days later)
+   - Adapter looks up internal authorization ID
+   - Settlement service commits funds
+
+3. **Reversal Webhook**:
+   - Processor notifies of refund/cancellation
+   - Adapter processes reversal through settlement service
+
+#### Key Features
+
+- **ID Mapping**: Processor transaction IDs mapped to internal authorization IDs
+- **Idempotency**: Duplicate webhooks handled safely
+- **No Business Logic**: Adapter only translates; core handles all logic
+
+#### Webhook Endpoints
+
+```
+POST /api/v1/webhooks/processor/sample/authorize
+POST /api/v1/webhooks/processor/sample/clear
+POST /api/v1/webhooks/processor/sample/reverse
+```
+
+#### Configuration
+
+```yaml
+card-engine:
+  processor:
+    active: sample
+    sample:
+      enabled: true
+      webhook-secret: your-webhook-secret
+```
+
+#### Testing
+
+See `SampleProcessorAdapterTest` for webhook flow examples.
+
+### Adding Your Own Processor
+
+To integrate a new card processor (Marqeta, Lithic, etc.):
+
+1. **Implement webhook DTOs** matching processor's format
+2. **Create adapter class** that:
+   - Receives processor webhooks
+   - Maps processor IDs to internal IDs
+   - Translates to `AuthorizationRequest`/`ClearingRequest`
+   - Calls core orchestration services
+3. **Add webhook controller** endpoints
+4. **Store ID mappings** in database
+5. **Preserve idempotency keys** from processor
+
+**Key Rule**: Adapters only translate. Never put business logic in adapters.
+
+See `com.cardengine.providers.processor.SampleProcessorAdapter` as reference implementation.
 
 ## Roadmap
 
@@ -382,16 +540,19 @@ card-engine:
 - ✅ Basic rules engine
 - ✅ REST API
 - ✅ Mock provider adapters
+- ✅ **Apache Fineract integration (authoritative ledger)**
+- ✅ **Real processor adapter (SampleProcessor with webhooks)**
+- ✅ **Authorization hold workaround for Fineract**
 
 ### Future Enhancements
 - [ ] Multi-currency support with FX
-- [ ] Webhook events for real-time notifications
+- [ ] Webhook events for internal notifications
 - [ ] Advanced fraud detection
 - [ ] Multi-card per account
 - [ ] Spend controls per merchant/category
 - [ ] Reporting and analytics APIs
 - [ ] Admin dashboard
-- [ ] Real processor integrations (Marqeta, Lithic)
+- [ ] Additional processor integrations (Marqeta, Lithic, Stripe Issuing)
 
 ## Production Readiness Checklist
 

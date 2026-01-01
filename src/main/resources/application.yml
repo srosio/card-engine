@@ -38,3 +38,19 @@ card-engine:
     daily-limit-default: 5000.00
     transaction-limit-default: 1000.00
     velocity-max-per-minute: 5
+
+  # Apache Fineract Integration
+  fineract:
+    enabled: false  # Set to true to enable Fineract as backing ledger
+    base-url: http://localhost:8443/fineract-provider/api/v1
+    tenant: default
+    username: mifos
+    password: password
+    card-auth-holds-gl-account-id: 1000  # GL account ID for authorization holds
+
+  # Card Processor Configuration
+  processor:
+    active: mock  # Options: mock, sample
+    sample:
+      enabled: false
+      webhook-secret: changeme  # Used to verify webhook signatures in production
