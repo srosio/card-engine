@@ -12,20 +12,20 @@ Card Engine is a **bank-agnostic card orchestration platform** that enables bank
 
 ### What Card Engine Is
 
-✅ **Card integration layer for banks** - Plugin for existing core banking systems
-✅ **Bank adapter framework** - Works with any CBS (Fineract, T24, Mambu, FLEXCUBE, etc.)
-✅ **Card lifecycle management** - Issue, activate, freeze, authorize transactions
-✅ **Authorization & settlement orchestration** - Routes to bank core for balance checks
-✅ **Rules engine** - Spending limits, MCC blocking, velocity controls
-✅ **Processor adapters** - Integrate with card networks and processors
+- ✅ **Card integration layer for banks** - Plugin for existing core banking systems
+- ✅ **Bank adapter framework** - Works with any CBS (Fineract, T24, Mambu, FLEXCUBE, etc.)
+- ✅ **Card lifecycle management** - Issue, activate, freeze, authorize transactions
+- ✅ **Authorization & settlement orchestration** - Routes to bank core for balance checks
+- ✅ **Rules engine** - Spending limits, MCC blocking, velocity controls
+- ✅ **Processor adapters** - Integrate with card networks and processors
 
 ### What Card Engine Is NOT
 
-❌ **Not a core banking system** - Bank's CBS is the source of truth
-❌ **Not an account provider** - Uses existing bank client accounts
-❌ **Not a ledger** - Bank core owns all balances and transactions
-❌ **Not a card issuer** - Requires partnership with licensed issuer/processor
-❌ **Not a compliance platform** - KYC/AML handled by bank's systems
+- ❌ **Not a core banking system** - Bank's CBS is the source of truth
+- ❌ **Not an account provider** - Uses existing bank client accounts
+- ❌ **Not a ledger** - Bank core owns all balances and transactions
+- ❌ **Not a card issuer** - Requires partnership with licensed issuer/processor
+- ❌ **Not a compliance platform** - KYC/AML handled by bank's systems
 
 ## The Problem
 
@@ -46,8 +46,8 @@ Card Engine provides a **bank core integration layer** where your CBS remains th
 ```
 ┌─────────────────────────────────────────────────────┐
 │          Bank's Core Banking System (CBS)           │
-│     (Fineract, T24, Mambu, FLEXCUBE, Custom)       │
-│                                                      │
+│     (Fineract, T24, Mambu, FLEXCUBE, Custom)        │
+│                                                     │
 │  • Client accounts (pre-existing)                   │
 │  • Balances (authoritative)                         │
 │  • Transactions (source of truth)                   │
@@ -57,8 +57,8 @@ Card Engine provides a **bank core integration layer** where your CBS remains th
                         │ (balance checks, holds, commits)
                         │
 ┌─────────────────────────────────────────────────────┐
-│                  Card Engine                         │
-│                                                      │
+│                  Card Engine                        │
+│                                                     │
 │  • Card lifecycle (issue, activate, freeze)         │
 │  • Authorization orchestration                      │
 │  • Settlement coordination                          │
@@ -69,7 +69,7 @@ Card Engine provides a **bank core integration layer** where your CBS remains th
                         │ Processor webhooks
                         │
 ┌─────────────────────────────────────────────────────┐
-│          Card Network / Processor                    │
+│          Card Network / Processor                   │
 │        (Marqeta, Lithic, Galileo, etc.)             │
 └─────────────────────────────────────────────────────┘
 ```
@@ -97,45 +97,45 @@ This means:
 ```
 ┌──────────────────────────────────────────────────────┐
 │        Bank's Core Banking System (CBS)              │
-│   Fineract / T24 / Mambu / FLEXCUBE / Custom        │
-│                                                       │
-│   • Authoritative balances                          │
-│   • Transaction ledger                              │
-│   • Client accounts                                 │
+│   Fineract / T24 / Mambu / FLEXCUBE / Custom         │
+│                                                      │
+│   • Authoritative balances                           │
+│   • Transaction ledger                               │
+│   • Client accounts                                  │
 └──────────────────────────────────────────────────────┘
                         ▲
                         │ BankAccountAdapter
                         │ (getBalance, placeHold, commitDebit, releaseHold)
                         │
 ┌───────────────────────┴───────────────────────────────┐
-│              Card Engine (PostgreSQL)                  │
-│                                                        │
-│  ┌────────────────────────────────────────────────┐  │
-│  │  Card Network Webhook Controller               │  │
-│  │  (Authorization, Clearing, Reversal webhooks)  │  │
-│  └────────────────────────────────────────────────┘  │
+│              Card Engine (PostgreSQL)                 │
+│                                                       │
+│  ┌────────────────────────────────────────────────┐   │
+│  │  Card Network Webhook Controller               │   │
+│  │  (Authorization, Clearing, Reversal webhooks)  │   │
+│  └────────────────────────────────────────────────┘   │
 │                        │                              │
-│  ┌────────────────────┴──────────────────────────┐  │
-│  │   Bank Services                                │  │
-│  │   • BankCardIssuanceService                   │  │
-│  │   • BankAuthorizationService                  │  │
-│  │   • BankSettlementService                     │  │
-│  └────────────────────────────────────────────────┘  │
+│  ┌─────────────────────┴─────────────────────────┐    │
+│  │   Bank Services                               │    │
+│  │   • BankCardIssuanceService                   │    │
+│  │   • BankAuthorizationService                  │    │
+│  │   • BankSettlementService                     │    │
+│  └───────────────────────────────────────────────┘    │
 │                        │                              │
-│  ┌────────────────────┴──────────────────────────┐  │
-│  │   Domain Entities (PostgreSQL)                │  │
-│  │   • Cards                                      │  │
-│  │   • BankAccountMapping (card → bank account)  │  │
-│  │   • Authorizations (tracking only)            │  │
-│  │   • Rules (limits, MCC blocks)                │  │
-│  └────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────┘
+│  ┌─────────────────────┴─────────────────────────┐    │
+│  │   Domain Entities (PostgreSQL)                │    │
+│  │   • Cards                                     │    │
+│  │   • BankAccountMapping (card → bank account)  │    │
+│  │   • Authorizations (tracking only)            │    │
+│  │   • Rules (limits, MCC blocks)                │    │
+│  └───────────────────────────────────────────────┘    │
+└───────────────────────────────────────────────────────┘
                         ▲
                         │ Webhook callbacks
                         │
 ┌───────────────────────┴────────────────────────────────┐
 │        Card Processor / Network                        │
-│     (Marqeta, Lithic, Galileo, Stripe Issuing)        │
+│     (Marqeta, Lithic, Galileo, Stripe Issuing)         │
 └────────────────────────────────────────────────────────┘
 ```
 
